@@ -87,9 +87,8 @@ let TRUTH=[];
 const DARE_RAW=['模仿一种动物叫声','对视30秒不准笑','单脚站30秒','用方言说一段深情的话','做10个俯卧撑','闭眼让对方手指画眉毛','用三种声音说你好','即兴跳15秒舞','模仿三个表情包','讲一个冷笑话必须让对方笑','把我要减肥唱出来','用左手写对方名字','原地转10圈走直线','用rap介绍自己','唱一首儿歌带动作','闭眼猜对方伸了几根手指','边深蹲边背乘法口诀','用最嗲的声音说一段话','模仿对方三个习惯','给对方按摩肩膀30秒','摆最搞笑姿势定格10秒','学一种动物走路','倒着说自己的名字','用肚子笑10秒','朗诵一首诗要深情','做5个波比跳','用鼻子哼一首歌让对方猜','闭眼画一朵花','用反问句对话30秒','假装自己是天气预报员','用最慢的速度说一段绕口令','表演一段即兴话剧','给对方起三个外号','闭眼数30秒睁眼说误差','不眨眼比赛','用三种语言说我爱你','做5个仰卧起坐','模仿机器人走路','用最夸张的方式打喷嚏','原地跳20下'];
 let DARE=[];
 
-function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}return arr;}
-function initQuiz(){QUIZ=shuffle([...QUIZ_RAW]);}
-function initTruthDare(){TRUTH=shuffle([...TRUTH_RAW]);DARE=shuffle([...DARE_RAW]);}
+function seededRandom(seed){let s=seed;return function(){s=(s*9301+49297)%233280;return s/233280;};}
+function shuffleSeeded(arr,seed){const rng=seededRandom(seed);const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
 // ==================== MQTT 连接 ====================
 let client=null;
@@ -185,8 +184,7 @@ function listenMQTT(){
             
             if(action==='start_game'){
                 currentGame=data.game;
-                if(data.game==='quiz'){initQuiz();quizState={idx:0,score:0,total:0,hAns:null,gAns:null,revealed:false};showQuizUI();}
-                else{initTruthDare();tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};showRPSUI();}
+                initGame(data.game,data.seed||0);
             }
             
             if(action==='quiz_answer'){
@@ -263,9 +261,13 @@ function copyCode(){navigator.clipboard?.writeText(roomCode).then(()=>showToast(
 
 function startGame(){
     if(!otherOnline){showToast('等待对方加入~','info');return;}
-    pub('start_game',{game:currentGame});
-    if(currentGame==='quiz'){initQuiz();quizState={idx:0,score:0,total:0,hAns:null,gAns:null,revealed:false};myQuizAnswer=null;showQuizUI();}
-    else{initTruthDare();tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};myRPSPick=null;showRPSUI();}
+    const seed=Math.floor(Math.random()*1000000);
+    pub('start_game',{game:currentGame,seed:seed});
+    initGame(currentGame,seed);
+}
+function initGame(game,seed){
+    if(game==='quiz'){QUIZ=shuffleSeeded(QUIZ_RAW,seed);quizState={idx:0,score:0,total:0,hAns:null,gAns:null,revealed:false};myQuizAnswer=null;showQuizUI();}
+    else{TRUTH=shuffleSeeded(TRUTH_RAW,seed);DARE=shuffleSeeded(DARE_RAW,seed);tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};myRPSPick=null;showRPSUI();}
 }
 
 function leaveRoom(){
