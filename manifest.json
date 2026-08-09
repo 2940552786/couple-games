@@ -1,0 +1,10 @@
+{
+  "name": "情侣小游戏",
+  "short_name": "情侣游戏",
+  "start_url": "/couple-games/",
+  "scope": "/couple-games/",
+  "display": "standalone",
+  "background_color": "#fff0f5",
+  "theme_color": "#c44dff",
+  "icons": [{"src":"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>","sizes":"any","type":"image/svg+xml"}]
+}
