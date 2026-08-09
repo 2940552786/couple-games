@@ -154,29 +154,28 @@ function enterRoom(gameType){
 // ==================== 房间 ====================
 async function createRoom(gameType){
     roomCode=String(Math.floor(100000+Math.random()*900000));
-    amHost=true;
-    currentGame=gameType;
-    const state=await readState();
-    state['room_'+roomCode]={host:myId,guest:null,hostAlive:Date.now(),guestAlive:0,game:gameType,quiz:{idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:false},td:{hRps:null,gRps:null,result:null,loser:null,type:null,index:null,phase:'rps',active:false}};
-    await writeState(state);
-    startPolling();
+    amHost=true;currentGame=gameType;
+    // 先显示房间，后台写入
     showLobby();
+    startPolling();
+    const state=await readState().catch(()=>({}));
+    state['room_'+roomCode]={host:myId,guest:null,hostAlive:Date.now(),guestAlive:0,game:gameType,quiz:{idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:false},td:{hRps:null,gRps:null,result:null,loser:null,type:null,index:null,phase:'rps',active:false}};
+    writeState(state).catch(()=>{});
 }
 
 async function joinRoom(gameType){
     const input=document.getElementById('joinCode');
     roomCode=input.value.trim();
     if(roomCode.length!==6){showToast('请输入6位房间码','error');return;}
-    amHost=false;
-    currentGame=gameType;
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key]){showToast('房间不存在！','error');return;}
-    state[key].guest=myId;
-    state[key].guestAlive=Date.now();
-    await writeState(state);
-    startPolling();
+    amHost=false;currentGame=gameType;
+    // 先显示房间，后台加入
     showLobby();
+    startPolling();
+    const state=await readState().catch(()=>({}));
+    const key='room_'+roomCode;
+    if(!state[key]){showToast('房间不存在或网络慢，请重试~','error');showHome();return;}
+    state[key].guest=myId;state[key].guestAlive=Date.now();
+    writeState(state).catch(()=>{});
 }
 
 function startPolling(){
@@ -263,18 +262,17 @@ async function leaveRoom(){
 async function startGame(game){
     if(!otherJoined){showToast('等待对方加入~','info');return;}
     currentGame=game;
-    const state=await readState();
+    // 先显示游戏UI
+    if(game==='quiz'){quizMyAnswer=null;showQuizUI({idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:true});}
+    else{rpsMyPick=null;showRPSUI();}
+    // 后台同步
+    const state=await readState().catch(()=>({}));
     const key='room_'+roomCode;
     if(!state[key])return;
     state[key].game=game;
-    if(game==='quiz'){
-        state[key].quiz={idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:true};
-    }else{
-        state[key].td={hRps:null,gRps:null,result:null,loser:null,type:null,index:null,phase:'rps',active:true};
-    }
-    await writeState(state);
-    if(game==='quiz'){quizMyAnswer=null;showQuizUI(state[key].quiz);}
-    else{rpsMyPick=null;showRPSUI();}
+    if(game==='quiz'){state[key].quiz={idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:true};}
+    else{state[key].td={hRps:null,gRps:null,result:null,loser:null,type:null,index:null,phase:'rps',active:true};}
+    writeState(state).catch(()=>{});
 }
 
 // ==================== 默契大考验 ====================
