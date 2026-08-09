@@ -116,7 +116,7 @@ let tdState=null;
 let myQuizAnswer=null;
 let myRPSPick=null;
 
-function pub(topic,data){if(client&&connected)client.publish('cpg/'+roomCode+'/'+topic,JSON.stringify(data));}
+function pub(topic,data){if(client&&connected)client.publish('cpg/'+roomCode+'/'+topic,JSON.stringify({...data,from:myRole}));}
 
 // ==================== 渲染 ====================
 let r=function(h){document.getElementById('app').innerHTML=h;};
@@ -176,11 +176,13 @@ function listenMQTT(){
     client.on('message',(topic,msg)=>{
         try{
             const data=JSON.parse(msg.toString());
+            // 忽略自己发出的消息
+            if(data.from===myRole)return;
             const parts=topic.split('/');
             const action=parts[2];
             
-            if(action==='guest_join'&&amHost){otherOnline=true;pub('host_join',{id:myRole});showLobby();}
-            if(action==='host_join'&&!amHost){otherOnline=true;showLobby();}
+            if(action==='host_join'&&!amHost){otherOnline=true;pub('host_join',{id:myRole,from:myRole});showLobby();}
+            if(action==='guest_join'&&amHost){otherOnline=true;pub('host_join',{id:myRole,from:myRole});showLobby();}
             
             if(action==='start_game'){
                 currentGame=data.game;
@@ -189,10 +191,13 @@ function listenMQTT(){
             
             if(action==='quiz_answer'){
                 if(!quizState)return;
+                // 对方选的答案
                 if(amHost)quizState.gAns=data.answer;else quizState.hAns=data.answer;
-                if(quizState.hAns!=null&&quizState.gAns!=null&&!quizState.revealed){
+                // 检查自己是否也选了
+                const myAns=amHost?quizState.hAns:quizState.gAns;
+                if(myAns!=null&&!quizState.revealed){
                     quizState.revealed=true;
-                    const matched=(amHost?quizState.hAns:quizState.gAns)===(amHost?quizState.gAns:quizState.hAns);
+                    const matched=quizState.hAns===quizState.gAns;
                     if(matched)quizState.score++;
                     quizState.total++;
                     showQuizReveal(matched);
@@ -210,32 +215,16 @@ function listenMQTT(){
             if(action==='rps_pick'){
                 if(!tdState)return;
                 if(amHost)tdState.gRps=data.pick;else tdState.hRps=data.pick;
-                if(tdState.hRps!=null&&tdState.gRps!=null&&tdState.phase==='rps'){
+                const myPick=amHost?tdState.hRps:tdState.gRps;
+                if(myPick!=null&&tdState.phase==='rps'){
                     resolveRPS();
                 }
             }
             
-            if(action==='td_choose'){
-                if(!tdState)return;
-                tdState.type=data.type;tdState.index=data.index;tdState.phase='show';
-                showTDShow();
-            }
-            
-            if(action==='td_next'){
-                tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};
-                myRPSPick=null;
-                showRPSUI();
-            }
-            
-            if(action==='td_redraw'){
-                if(tdState)tdState.phase='choose';
-                showTDChoose();
-            }
-            
-            if(action==='back_lobby'){
-                currentGame=null;quizState=null;tdState=null;myQuizAnswer=null;myRPSPick=null;
-                showLobby();
-            }
+            if(action==='td_choose'){if(!tdState)return;tdState.type=data.type;tdState.index=data.index;tdState.phase='show';showTDShow();}
+            if(action==='td_next'){tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};myRPSPick=null;showRPSUI();}
+            if(action==='td_redraw'){if(tdState)tdState.phase='choose';showTDChoose();}
+            if(action==='back_lobby'){currentGame=null;quizState=null;tdState=null;myQuizAnswer=null;myRPSPick=null;showLobby();}
         }catch(e){}
     });
 }
@@ -294,8 +283,19 @@ function showQuizUI(){
 function pickQuiz(idx){
     if(myQuizAnswer!=null)return;
     myQuizAnswer=idx;
+    // 本地记录自己的答案
+    if(amHost)quizState.hAns=idx;else quizState.gAns=idx;
     document.querySelectorAll('.quiz-opt').forEach((b,i)=>{b.classList.add('locked');if(i===idx)b.classList.add('picked');});
     pub('quiz_answer',{answer:idx});
+    // 检查对方是否也答了
+    const otherAns=amHost?quizState.gAns:quizState.hAns;
+    if(otherAns!=null){
+        quizState.revealed=true;
+        const matched=quizState.hAns===quizState.gAns;
+        if(matched)quizState.score++;
+        quizState.total++;
+        showQuizReveal(matched);
+    }
 }
 
 function showQuizReveal(matched){
@@ -342,8 +342,11 @@ function showRPSUI(){
 function pickRPS(hand){
     if(myRPSPick!=null)return;
     myRPSPick=hand;
+    if(amHost)tdState.hRps=hand;else tdState.gRps=hand;
     document.querySelectorAll('.rps-btn').forEach(b=>{b.classList.add('locked');if(b.textContent===hand)b.classList.add('picked')});
     pub('rps_pick',{pick:hand});
+    const otherPick=amHost?tdState.gRps:tdState.hRps;
+    if(otherPick!=null&&tdState.phase==='rps'){resolveRPS();}
 }
 
 function resolveRPS(){
