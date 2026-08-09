@@ -87,8 +87,10 @@ let pollingTimer=null;
 
 async function readState(){
     try{
-        const r=await fetch(RAW_URL+'?t='+Date.now());
-        return await r.json();
+        const r=await fetch(API_URL,{headers:{'Authorization':'token '+G_TOKEN,'Accept':'application/vnd.github.v3+json','Cache-Control':'no-cache'}});
+        const d=await r.json();
+        if(!d.content)return{};
+        return JSON.parse(atob(d.content));
     }catch(e){return{};}
 }
 async function writeState(state){
