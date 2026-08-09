@@ -171,8 +171,8 @@ function listenMQTT(){
             const parts=topic.split('/');
             const action=parts[2];
             
+            if(action==='guest_join'&&amHost){otherOnline=true;pub('host_join',{id:myRole});showLobby();}
             if(action==='host_join'&&!amHost){otherOnline=true;showLobby();}
-            if(action==='guest_join'&&amHost){otherOnline=true;showLobby();}
             
             if(action==='start_game'){
                 currentGame=data.game;
