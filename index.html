@@ -7,6 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#c44dff">
     <link rel="manifest" href="manifest.json">
+    <script src="https://unpkg.com/mqtt@5/dist/mqtt.min.js"></script>
     <title>💕 情侣小游戏</title>
     <style>
         :root{--pink:#ff6b9d;--purple:#c44dff;--rose:#ff4d6a}
@@ -43,14 +44,14 @@
         .quiz-q{font-size:18px;font-weight:700;color:#3d2b4d;margin:10px 0;line-height:1.5}
         .quiz-opts{display:flex;flex-direction:column;gap:7px;margin:10px 0}
         .quiz-opt{padding:11px 13px;border:2px solid #e8ddf5;border-radius:14px;font-size:14px;font-weight:600;color:#3d2b4d;cursor:pointer;transition:all .2s;text-align:center}
-        .quiz-opt:hover{border-color:#c44dff}
+        .quiz-opt:active{transform:scale(.96)}
         .quiz-opt.picked{border-color:#c44dff;background:#f8f0ff}
         .quiz-opt.locked{pointer-events:none;opacity:.7}
         .quiz-opt.match{border-color:#22c55e;background:#f0fff4}
         .quiz-opt.mismatch{border-color:#ef4444;background:#fff5f5}
         .rps-row{display:flex;justify-content:center;gap:12px;margin:12px 0}
         .rps-btn{width:60px;height:60px;border-radius:50%;border:3px solid #e8ddf5;font-size:28px;cursor:pointer;background:#fff;transition:all .2s}
-        .rps-btn:hover{border-color:#c44dff;transform:scale(1.08)}
+        .rps-btn:active{transform:scale(.9)}
         .rps-btn.picked{border-color:#c44dff;background:#f8f0ff;transform:scale(1.1)}
         .rps-btn.locked{pointer-events:none;opacity:.5}
         .td-card{background:linear-gradient(135deg,#fff0f5,#f8e8ff);border-radius:16px;padding:22px 16px;text-align:center;margin:10px 0;font-size:16px;font-weight:700;color:#3d2b4d;line-height:1.6;min-height:70px;display:flex;align-items:center;justify-content:center}
@@ -66,6 +67,9 @@
         .mt-8{margin-top:8px}.mt-12{margin-top:12px}.mb-8{margin-bottom:8px}
         .connecting{animation:pulse 1.5s infinite}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+        .status-bar{font-size:11px;color:#b8a8cc;margin-top:4px}
+        .status-bar .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}
+        .dot-green{background:#22c55e}.dot-red{background:#ef4444}.dot-yellow{background:#f59e0b}
     </style>
 </head>
 <body>
@@ -74,437 +78,313 @@
 
 <script>
 // ==================== 题库 ====================
-const QUIZ=[{q:'喜欢猫还是狗？',opts:['🐱 猫','🐶 狗','都喜欢','都不喜欢']},{q:'最喜欢的颜色？',opts:['🔴 红/粉','🔵 蓝/紫','🟢 绿','🟡 黄/橙','⚫ 黑/白']},{q:'咖啡还是奶茶？',opts:['☕ 咖啡','🧋 奶茶','都不喝']},{q:'早起鸟还是夜猫子？',opts:['🌅 早起','🌙 夜猫','看情况']},{q:'喜欢夏天还是冬天？',opts:['☀️ 夏天','❄️ 冬天','春秋']},{q:'更喜欢海边还是山？',opts:['🌊 海边','⛰️ 山里','都喜欢']},{q:'火锅必点的三样之一？',opts:['🥩 肉','🥬 蔬菜','🍜 主食','🫕 丸子']},{q:'下雨天最喜欢做什么？',opts:['📖 看书追剧','😴 睡觉','🍜 吃火锅','🎧 听音乐']},{q:'最想去旅行的地方？',opts:['🗼 日本','🏝️ 海岛','🏔️ 雪山','🏛️ 欧洲','🏜️ 国内']},{q:'最喜欢的电影类型？',opts:['😂 喜剧','😱 恐怖','💕 爱情','🚀 科幻','🎬 动画']},{q:'苹果还是安卓？',opts:['🍎 苹果','🤖 安卓']},{q:'最喜欢的音乐类型？',opts:['🎵 流行','🎸 摇滚','🎹 古典','🎤 说唱','🎧 民谣']},{q:'宅家还是出门？',opts:['🏠 宅家','🚶 出门','看心情']},{q:'吃香菜吗？',opts:['✅ 吃','❌ 不吃']},{q:'早上洗澡还是晚上？',opts:['🌅 早上','🌙 晚上']},{q:'计划型还是随性型？',opts:['📋 计划','🎲 随性']},{q:'最喜欢的运动？',opts:['🏀 球类','🏊 游泳','🏃 跑步','🚴 骑行','😴 不运动']},{q:'最喜欢的宠物？',opts:['🐱 猫','🐶 狗','🐹 仓鼠','🐟 鱼','🚫 不养']},{q:'手机静音还是响铃？',opts:['🔇 静音','🔔 响铃','震动']},{q:'最喜欢的节日？',opts:['🎄 圣诞','🧧 春节','🎃 万圣','🎂 生日']},{q:'甜食还是咸食？',opts:['🍰 甜食','🍟 咸食','都爱']},{q:'最想拥有的超能力？',opts:['🛸 飞','⏰ 时间停止','🧠 读心','🫥 隐身']},{q:'理想的一天从什么开始？',opts:['🛌 睡到自然醒','🏃 运动','🍳 做早餐','📱 刷手机']},{q:'最喜欢的花？',opts:['🌹 玫瑰','🌻 向日葵','🌸 樱花','🌷 郁金香']},{q:'拍照还是被拍？',opts:['📸 拍照','🤳 被拍','都行']},{q:'最不能接受的食物？',opts:['🥒 苦瓜','🧅 洋葱','🫘 折耳根','🐸 奇怪肉类','没有']},{q:'如果中了一百万？',opts:['✈️ 旅游','🏠 买房','💰 存起来','🍽️ 吃大餐']},{q:'更看重朋友的什么？',opts:['🤝 真诚','😂 幽默','🧠 智慧','💪 可靠']},{q:'最怕什么动物？',opts:['🐍 蛇','🕷️ 蜘蛛','🪳 蟑螂','🐭 老鼠','都不怕']},{q:'面条还是米饭？',opts:['🍜 面条','🍚 米饭','都爱']},{q:'想穿越到哪个时代？',opts:['🏛️ 古代','🎷 民国','🚀 未来','😎 现在挺好']},{q:'最想学的新技能？',opts:['🎸 乐器','🍳 做饭','🗣️ 外语','💃 舞蹈','💻 编程']},{q:'收到什么礼物最开心？',opts:['💌 手工','💰 实用','🌸 花','🎁 惊喜']},{q:'钱和时间哪个更重要？',opts:['💰 钱','⏰ 时间']},{q:'相信一见钟情还是日久生情？',opts:['💘 一见钟情','⏳ 日久生情']},{q:'房间整洁还是随性？',opts:['✨ 整洁','🤷 随性']},{q:'喜欢单数还是双数？',opts:['1️⃣ 单数','2️⃣ 双数','没注意过']},{q:'最喜欢的冰淇淋口味？',opts:['🍫 巧克力','🍓 草莓','🍵 抹茶','🥛 香草']},{q:'你觉得运气还是努力重要？',opts:['🍀 运气','💪 努力','都重要']},{q:'喜欢安静还是热闹？',opts:['🌲 安静','🏙️ 热闹','看心情']}];
+const QUIZ=[{q:'喜欢猫还是狗？',opts:['🐱 猫','🐶 狗','都喜欢','都不喜欢']},{q:'最喜欢的颜色？',opts:['🔴 红/粉','🔵 蓝/紫','🟢 绿','🟡 黄/橙','⚫ 黑/白']},{q:'咖啡还是奶茶？',opts:['☕ 咖啡','🧋 奶茶','都不喝']},{q:'早起鸟还是夜猫子？',opts:['🌅 早起','🌙 夜猫','看情况']},{q:'喜欢夏天还是冬天？',opts:['☀️ 夏天','❄️ 冬天','春秋']},{q:'更喜欢海边还是山？',opts:['🌊 海边','⛰️ 山里','都喜欢']},{q:'火锅必点的三样之一？',opts:['🥩 肉','🥬 蔬菜','🍜 主食','🫕 丸子']},{q:'下雨天最喜欢做什么？',opts:['📖 看书追剧','😴 睡觉','🍜 吃火锅','🎧 听音乐']},{q:'最想去旅行的地方？',opts:['🗼 日本','🏝️ 海岛','🏔️ 雪山','🏛️ 欧洲','🏜️ 国内']},{q:'最喜欢的电影类型？',opts:['😂 喜剧','😱 恐怖','💕 爱情','🚀 科幻','🎬 动画']},{q:'苹果还是安卓？',opts:['🍎 苹果','🤖 安卓']},{q:'最喜欢的音乐类型？',opts:['🎵 流行','🎸 摇滚','🎹 古典','🎤 说唱','🎧 民谣']},{q:'宅家还是出门？',opts:['🏠 宅家','🚶 出门','看心情']},{q:'吃香菜吗？',opts:['✅ 吃','❌ 不吃']},{q:'早上洗澡还是晚上？',opts:['🌅 早上','🌙 晚上']},{q:'计划型还是随性型？',opts:['📋 计划','🎲 随性']},{q:'最喜欢的运动？',opts:['🏀 球类','🏊 游泳','🏃 跑步','🚴 骑行','😴 不运动']},{q:'最喜欢的宠物？',opts:['🐱 猫','🐶 狗','🐹 仓鼠','🐟 鱼','🚫 不养']},{q:'手机静音还是响铃？',opts:['🔇 静音','🔔 响铃','震动']},{q:'最喜欢的节日？',opts:['🎄 圣诞','🧧 春节','🎃 万圣','🎂 生日']},{q:'甜食还是咸食？',opts:['🍰 甜食','🍟 咸食','都爱']},{q:'最想拥有的超能力？',opts:['🛸 飞','⏰ 时间停止','🧠 读心','🫥 隐身']},{q:'理想的一天从什么开始？',opts:['🛌 睡到自然醒','🏃 运动','🍳 做早餐','📱 刷手机']},{q:'最喜欢的花？',opts:['🌹 玫瑰','🌻 向日葵','🌸 樱花','🌷 郁金香']},{q:'拍照还是被拍？',opts:['📸 拍照','🤳 被拍','都行']},{q:'最不能接受的食物？',opts:['🥒 苦瓜','🧅 洋葱','🫘 折耳根','🐸 奇怪肉类','没有']},{q:'如果中了一百万？',opts:['✈️ 旅游','🏠 买房','💰 存起来','🍽️ 吃大餐']},{q:'更看重朋友的什么？',opts:['🤝 真诚','😂 幽默','🧠 智慧','💪 可靠']},{q:'最怕什么动物？',opts:['🐍 蛇','🕷️ 蜘蛛','🪳 蟑螂','🐭 老鼠','都不怕']},{q:'面条还是米饭？',opts:['🍜 面条','🍚 米饭','都爱']},{q:'想穿越到哪个时代？',opts:['🏛️ 古代','🎷 民国','🚀 未来','😎 现在挺好']},{q:'最想学的新技能？',opts:['🎸 乐器','🍳 做饭','🗣️ 外语','💃 舞蹈','💻 编程']},{q:'收到什么礼物最开心？',opts:['💌 手工','💰 实用','🌸 花','🎁 惊喜']},{q:'钱和时间哪个更重要？',opts:['💰 钱','⏰ 时间']},{q:'相信一见钟情还是日久生情？',opts:['💘 一见钟情','⏳ 日久生情']},{q:'房间整洁还是随性？',opts:['✨ 整洁','🤷 随性']},{q:'喜欢单数还是双数？',opts:['1️⃣ 单数','2️⃣ 双数','没注意过']},{q:'最喜欢的冰淇淋口味？',opts:['🍫 巧克力','🍓 草莓','🍵 抹茶','🥛 香草']},{q:'你觉得运气还是努力重要？',opts:['🍀 运气','💪 努力','都重要']}];
 const TRUTH=['最近一次感到开心的事？','最害怕失去什么？','有什么隐藏技能？','上一次哭是什么时候？','最想改掉的习惯？','做过最尴尬的事？','最让你感动的一件事？','回到过去最想改变什么？','觉得自己最大的优点？','上一次撒谎是什么时候？','有没有一直想做没做的事？','最珍贵的童年回忆？','有没有暗恋过谁？','上一次生气因为什么？','做过最疯狂的事？','最让你骄傲的一件事？','最想去但还没去的地方？','什么事能让你瞬间开心？','最讨厌别人对你做什么？','有没有后悔没做的事？','你觉得自己理性还是感性？','最想和谁互换一天人生？','一年后的自己什么样？','最想对现在的自己说什么？'];
 const DARE=['模仿一种动物叫声','对视30秒不准笑','单脚站30秒','用方言说一段深情的话','做10个俯卧撑','闭眼让对方手指画眉毛','用三种声音说你好','即兴跳15秒舞','模仿三个表情包','讲一个冷笑话必须让对方笑','把我要减肥唱出来','用左手写对方名字','原地转10圈走直线','用rap介绍自己','唱一首儿歌带动作','闭眼猜对方伸了几根手指','边深蹲边背乘法口诀','用最嗲的声音说一段话','模仿对方三个习惯','给对方按摩肩膀30秒','摆最搞笑姿势定格10秒','学一种动物走路'];
 
-// ==================== GitHub 状态 API ====================
-const RAW_URL='https://raw.githubusercontent.com/2940552786/couple-games/master/state.json';
-const API_URL='https://api.github.com/repos/2940552786/couple-games/contents/state.json';
-const G_TOKEN=String.fromCharCode(103,104,112,95,98,83,118,67,90,72,102,73,65,98,89,75,50,88,75,70,98,80,68,83,74,117,67,103,106,52,73,98,48,121,51,115,69,112,89,56);
-let stateSha=null;
-let pollingTimer=null;
+// ==================== MQTT 连接 ====================
+let client=null;
+let connected=false;
+const BROKER='wss://broker.emqx.io:8084/mqtt';
 
-async function readState(){
-    try{
-        const r=await fetch(API_URL,{headers:{'Authorization':'token '+G_TOKEN,'Accept':'application/vnd.github.v3+json','Cache-Control':'no-cache'}});
-        const d=await r.json();
-        if(!d.content)return{};
-        return JSON.parse(atob(d.content));
-    }catch(e){return{};}
-}
-async function writeState(state){
-    try{
-        // 获取最新SHA
-        const gr=await fetch(API_URL,{headers:{'Authorization':'token '+G_TOKEN,'Accept':'application/vnd.github.v3+json','Cache-Control':'no-cache'}});
-        const gd=await gr.json();
-        stateSha=gd.sha;
-        const content=btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-        const rr=await fetch(API_URL,{method:'PUT',headers:{'Authorization':'token '+G_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify({message:'game update',content:content,sha:stateSha})});
-        if(rr.status===409){//冲突，重试一次
-            const gr2=await fetch(API_URL,{headers:{'Authorization':'token '+G_TOKEN,'Accept':'application/vnd.github.v3+json','Cache-Control':'no-cache'}});
-            const gd2=await gr2.json();
-            const content2=btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-            await fetch(API_URL,{method:'PUT',headers:{'Authorization':'token '+G_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify({message:'game update retry',content:content2,sha:gd2.sha})});
-        }
-    }catch(e){console.error('writeState:',e);}
+function connectMQTT(){
+    return new Promise((resolve)=>{
+        client=mqtt.connect(BROKER,{clientId:'cg_'+Math.random().toString(36).slice(2,10),clean:true,connectTimeout:10000,reconnectPeriod:3000});
+        client.on('connect',()=>{connected=true;resolve(true);});
+        client.on('error',()=>{connected=false;resolve(false);});
+        client.on('close',()=>{connected=false;});
+        setTimeout(()=>{if(!connected)resolve(false);},8000);
+    });
 }
 
 // ==================== 状态 ====================
-let myId='p_'+Math.random().toString(36).slice(2,7);
 let roomCode=null;
 let amHost=false;
-let otherJoined=false;
+let myRole=''; // 'host'|'guest'
+let otherOnline=false;
 let currentGame=null;
-let localUI=null; // 'home'|'lobby'|'quiz'|'quizReveal'|'rps'|'tdChoose'|'tdShow'
+let quizState=null;
+let tdState=null;
+let myQuizAnswer=null;
+let myRPSPick=null;
 
-// quiz
-let quizMyAnswer=null;
-// rps
-let rpsMyPick=null;
+function pub(topic,data){if(client&&connected)client.publish('cpg/'+roomCode+'/'+topic,JSON.stringify(data));}
 
-function render(h){document.getElementById('app').innerHTML=h;}
+// ==================== 渲染 ====================
+let r=function(h){document.getElementById('app').innerHTML=h;};
 
-// ==================== 主页 ====================
 function showHome(){
-    stopPolling();
-    roomCode=null;amHost=false;otherJoined=false;currentGame=null;localUI='home';
-    render(`<div class="header"><div class="icon">🎮</div><h1>情侣小游戏</h1><p>选一个游戏，创建房间邀请TA~</p></div>
+    roomCode=null;amHost=false;otherOnline=false;currentGame=null;
+    if(client){try{client.end();}catch(e){}}client=null;connected=false;
+    r(`<div class="header"><div class="icon">🎮</div><h1>情侣小游戏</h1><p>选一个游戏，创建房间邀请TA~</p></div>
     <div class="game-cards">
-        <div class="game-card" onclick="enterRoom('quiz')">
-            <div class="gc-icon">💕</div><div class="gc-info"><div class="gc-name">默契大考验</div><div class="gc-desc">互相了解，测测你们的默契度</div></div></div>
-        <div class="game-card" onclick="enterRoom('truthdare')">
-            <div class="gc-icon">🎲</div><div class="gc-info"><div class="gc-name">真心话大冒险</div><div class="gc-desc">猜拳定胜负，输的接受挑战</div></div></div>
+        <div class="game-card" onclick="enterRoom('quiz')"><div class="gc-icon">💕</div><div class="gc-info"><div class="gc-name">默契大考验</div><div class="gc-desc">互相了解，测测默契度</div></div></div>
+        <div class="game-card" onclick="enterRoom('truthdare')"><div class="gc-icon">🎲</div><div class="gc-info"><div class="gc-name">真心话大冒险</div><div class="gc-desc">猜拳定胜负，输的接受挑战</div></div></div>
     </div>`);
 }
 
-// 选游戏后进入房间页
 function enterRoom(gameType){
     currentGame=gameType;
-    localUI='roomEntry';
-    render(`<div class="header"><div class="icon">${gameType==='quiz'?'💕':'🎲'}</div><h1>${gameType==='quiz'?'默契大考验':'真心话大冒险'}</h1><p>创建房间，邀请TA一起玩~</p></div>
+    const gName=gameType==='quiz'?'默契大考验':'真心话大冒险';
+    const gIcon=gameType==='quiz'?'💕':'🎲';
+    r(`<div class="header"><div class="icon">${gIcon}</div><h1>${gName}</h1><p>创建房间，邀请TA一起玩~</p></div>
     <div class="card">
-        <p style="color:#9b8aad" class="mb-8">两人各用自己手机操作</p>
-        <button class="btn btn-primary btn-block" onclick="createRoom('${gameType}')">🏠 创建房间</button>
+        <p class="mb-8" style="color:#9b8aad">两人各用自己手机操作</p>
+        <button class="btn btn-primary btn-block" onclick="createRoom()">🏠 创建房间</button>
         <div class="mt-12" style="color:#b8a8cc;font-size:12px">— 或者 —</div>
         <input id="joinCode" placeholder="输入6位房间码" maxlength="6" autocomplete="off" style="width:100%;padding:11px;border:2px solid #e8ddf5;border-radius:14px;font-size:17px;text-align:center;font-weight:700;margin:8px 0;outline:none;letter-spacing:3px" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
-        <button class="btn btn-outline btn-block" onclick="joinRoom('${gameType}')">🚪 加入房间</button>
+        <button class="btn btn-outline btn-block" onclick="joinRoom()">🚪 加入房间</button>
         <button class="btn btn-sm btn-outline btn-block mt-8" onclick="showHome()">← 返回选游戏</button>
     </div>`);
 }
 
-// ==================== 房间 ====================
-async function createRoom(gameType){
+async function createRoom(){
     roomCode=String(Math.floor(100000+Math.random()*900000));
-    amHost=true;currentGame=gameType;
-    // 先显示房间，后台写入
+    amHost=true;myRole='host';
+    r(`<div class="header"><div class="icon">⏳</div><h1>连接中...</h1><p class="connecting">正在建立连接</p></div>`);
+    const ok=await connectMQTT();
+    if(!ok){showToast('连接失败，请检查网络后重试','error');showHome();return;}
+    client.subscribe('cpg/'+roomCode+'/#');
+    listenMQTT();
+    pub('host_join',{id:myRole});
     showLobby();
-    startPolling();
-    const state=await readState().catch(()=>({}));
-    state['room_'+roomCode]={host:myId,guest:null,hostAlive:Date.now(),guestAlive:0,game:gameType,quiz:{idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:false},td:{hRps:null,gRps:null,result:null,loser:null,type:null,index:null,phase:'rps',active:false}};
-    writeState(state).catch(()=>{});
 }
 
-async function joinRoom(gameType){
+async function joinRoom(){
     const input=document.getElementById('joinCode');
     roomCode=input.value.trim();
     if(roomCode.length!==6){showToast('请输入6位房间码','error');return;}
-    amHost=false;currentGame=gameType;
-    // 先显示房间，后台加入
+    amHost=false;myRole='guest';
+    r(`<div class="header"><div class="icon">⏳</div><h1>连接中...</h1><p class="connecting">正在加入房间 ${roomCode}</p></div>`);
+    const ok=await connectMQTT();
+    if(!ok){showToast('连接失败，请检查网络后重试','error');showHome();return;}
+    client.subscribe('cpg/'+roomCode+'/#');
+    listenMQTT();
+    pub('guest_join',{id:myRole});
     showLobby();
-    startPolling();
-    const state=await readState().catch(()=>({}));
-    const key='room_'+roomCode;
-    if(!state[key]){showToast('房间不存在或网络慢，请重试~','error');showHome();return;}
-    state[key].guest=myId;state[key].guestAlive=Date.now();
-    writeState(state).catch(()=>{});
 }
 
-function startPolling(){
-    stopPolling();
-    pollingTimer=setInterval(pollState,1500);
-    pollState();
-}
-function stopPolling(){
-    if(pollingTimer){clearInterval(pollingTimer);pollingTimer=null;}
-}
-
-async function pollState(){
-    if(!roomCode)return;
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key])return;
-    const room=state[key];
-    
-    // 检测对方
-    const otherRole=amHost?'guest':'host';
-    const wasJoined=otherJoined;
-    otherJoined=!!(room[otherRole]&&room[otherRole+'Alive']>Date.now()-10000);
-    if(!wasJoined&&otherJoined&&localUI==='lobby') showLobby();
-    if(wasJoined&&!otherJoined&&localUI!=='home'){otherJoined=false;showLobby();}
-
-    // 更新心跳
-    const myRole=amHost?'host':'guest';
-    if(Date.now()-room[myRole+'Alive']>5000){
-        room[myRole+'Alive']=Date.now();
-        writeState(state);
-    }
-
-    // 游戏同步
-    if(room.game!==currentGame&&otherJoined){
-        currentGame=room.game;
-        if(room.game==='quiz'){startQuizFromState(room.quiz);}
-        else if(room.game==='truthdare'){startTDFromState(room.td);}
-        else{showLobby();}
-    }
-
-    // 游戏内状态更新（不刷新UI，只做数据响应）
-    if(currentGame==='quiz'&&room.quiz&&room.quiz.active){
-        handleQuizPoll(room.quiz);
-    }
-    if(currentGame==='truthdare'&&room.td&&room.td.active){
-        handleTDPoll(room.td);
-    }
+function listenMQTT(){
+    client.on('message',(topic,msg)=>{
+        try{
+            const data=JSON.parse(msg.toString());
+            const parts=topic.split('/');
+            const action=parts[2];
+            
+            if(action==='host_join'&&!amHost){otherOnline=true;showLobby();}
+            if(action==='guest_join'&&amHost){otherOnline=true;showLobby();}
+            
+            if(action==='start_game'){
+                currentGame=data.game;
+                if(data.game==='quiz'){quizState={idx:0,score:0,total:0,hAns:null,gAns:null,revealed:false};showQuizUI();}
+                else{tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};showRPSUI();}
+            }
+            
+            if(action==='quiz_answer'){
+                if(!quizState)return;
+                if(amHost)quizState.gAns=data.answer;else quizState.hAns=data.answer;
+                if(quizState.hAns!=null&&quizState.gAns!=null&&!quizState.revealed){
+                    quizState.revealed=true;
+                    const matched=(amHost?quizState.hAns:quizState.gAns)===(amHost?quizState.gAns:quizState.hAns);
+                    if(matched)quizState.score++;
+                    quizState.total++;
+                    showQuizReveal(matched);
+                }
+            }
+            
+            if(action==='quiz_skip'){
+                if(!quizState)return;
+                quizState.idx++;quizState.hAns=null;quizState.gAns=null;quizState.revealed=false;
+                quizState.total++;
+                myQuizAnswer=null;
+                if(quizState.total>=10)showQuizEnd();else showQuizUI();
+            }
+            
+            if(action==='rps_pick'){
+                if(!tdState)return;
+                if(amHost)tdState.gRps=data.pick;else tdState.hRps=data.pick;
+                if(tdState.hRps!=null&&tdState.gRps!=null&&tdState.phase==='rps'){
+                    resolveRPS();
+                }
+            }
+            
+            if(action==='td_choose'){
+                if(!tdState)return;
+                tdState.type=data.type;tdState.index=data.index;tdState.phase='show';
+                showTDShow();
+            }
+            
+            if(action==='td_next'){
+                tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};
+                myRPSPick=null;
+                showRPSUI();
+            }
+            
+            if(action==='td_redraw'){
+                if(tdState)tdState.phase='choose';
+                showTDChoose();
+            }
+            
+            if(action==='back_lobby'){
+                currentGame=null;quizState=null;tdState=null;myQuizAnswer=null;myRPSPick=null;
+                showLobby();
+            }
+        }catch(e){}
+    });
 }
 
 // ==================== 大厅 ====================
 function showLobby(){
-    localUI='lobby';
-    const myName=amHost?'玩家1':'玩家2';
-    const otherName=amHost?'玩家2':'玩家1';
     const gName=currentGame==='quiz'?'默契大考验':'真心话大冒险';
     const gIcon=currentGame==='quiz'?'💕':'🎲';
-    render(`<div class="header"><div class="icon">${gIcon}</div><h1>${gName}</h1><p>房间 ${roomCode}</p>
+    const myName=amHost?'玩家1':'玩家2';
+    const otherName=amHost?'玩家2':'玩家1';
+    r(`<div class="header"><div class="icon">${gIcon}</div><h1>${gName}</h1><p>房间 ${roomCode}</p>
         <p><span class="badge badge-me">${myName}（我）</span>
-        ${otherJoined?`<span class="badge badge-other">${otherName} ✅</span>`:`<span class="badge badge-wait connecting">等待对方加入...</span>`}</p></div>
-        ${otherJoined?`<div class="card">
-            <p style="color:#9b8aad" class="mb-8">双方都在了，开始吧！</p>
-            <button class="btn btn-primary btn-block" onclick="startGame('${currentGame}')">🚀 开始游戏</button></div>`:
-        `<div class="card"><p style="color:#b8a8cc">⏳ 等待对方加入...</p><div class="room-code">${roomCode}</div>
+        ${otherOnline?`<span class="badge badge-other">${otherName} ✅</span>`:`<span class="badge badge-wait connecting">等待对方加入...</span>`}
+        </p><div class="status-bar"><span class="dot ${connected?'dot-green':'dot-red'}"></span>${connected?'已连接':'连接中...'}</div></div>
+        ${otherOnline?`<div class="card"><p class="mb-8" style="color:#9b8aad">双方都在了！</p>
+            <button class="btn btn-primary btn-block" onclick="startGame()">🚀 开始游戏</button></div>`:
+        `<div class="card"><p style="color:#b8a8cc">⏳ 等对方加入...</p><div class="room-code">${roomCode}</div>
             <button class="btn btn-sm btn-outline mt-8" onclick="copyCode()">📋 复制房间码</button></div>`}
         <button class="btn btn-sm btn-outline btn-block mt-12" onclick="leaveRoom()">🚪 离开房间</button>`);
 }
 
-function copyCode(){
-    navigator.clipboard?.writeText(roomCode).then(()=>showToast('已复制！发给TA~','success')).catch(()=>showToast('复制失败，请手动记下','error'));
+function copyCode(){navigator.clipboard?.writeText(roomCode).then(()=>showToast('已复制！','success')).catch(()=>showToast('请手动记下房间码','info'));}
+
+function startGame(){
+    if(!otherOnline){showToast('等待对方加入~','info');return;}
+    pub('start_game',{game:currentGame});
+    if(currentGame==='quiz'){quizState={idx:0,score:0,total:0,hAns:null,gAns:null,revealed:false};myQuizAnswer=null;showQuizUI();}
+    else{tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};myRPSPick=null;showRPSUI();}
 }
 
-async function leaveRoom(){
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(state[key]){
-        const myRole=amHost?'host':'guest';
-        state[key][myRole]=null;
-        state[key][myRole+'Alive']=0;
-        await writeState(state);
-    }
+function leaveRoom(){
+    pub('back_lobby',{});
+    if(client){try{client.end();}catch(e){}}client=null;connected=false;
     showHome();
 }
 
-async function startGame(game){
-    if(!otherJoined){showToast('等待对方加入~','info');return;}
-    currentGame=game;
-    // 先显示游戏UI
-    if(game==='quiz'){quizMyAnswer=null;showQuizUI({idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:true});}
-    else{rpsMyPick=null;showRPSUI();}
-    // 后台同步
-    const state=await readState().catch(()=>({}));
-    const key='room_'+roomCode;
-    if(!state[key])return;
-    state[key].game=game;
-    if(game==='quiz'){state[key].quiz={idx:0,hAns:null,gAns:null,revealed:false,score:0,total:0,active:true};}
-    else{state[key].td={hRps:null,gRps:null,result:null,loser:null,type:null,index:null,phase:'rps',active:true};}
-    writeState(state).catch(()=>{});
-}
-
 // ==================== 默契大考验 ====================
-function startQuizFromState(qs){
-    currentGame='quiz';quizMyAnswer=null;
-    showQuizUI(qs);
-}
-
-function showQuizUI(qs){
-    if(!qs)return;
-    localUI='quiz';
-    if(qs.total>=10){showQuizEnd(qs);return;}
-    const q=QUIZ[qs.idx%QUIZ.length];
-    const myRole=amHost?'hAns':'gAns';
-    const answered=qs[myRole]!=null;
-    const bothDone=qs.hAns!=null&&qs.gAns!=null;
-    if(bothDone&&qs.revealed){showQuizReveal(qs,q);return;}
-    render(`<div class="header"><div class="icon">💕</div><h1>默契大考验</h1><p>第${qs.total+1}题 | 得分：${qs.score} | 房间${roomCode}</p></div>
+function showQuizUI(){
+    if(!quizState||quizState.total>=10){showQuizEnd();return;}
+    const q=QUIZ[quizState.idx%QUIZ.length];
+    const answered=myQuizAnswer!=null;
+    r(`<div class="header"><div class="icon">💕</div><h1>默契大考验</h1><p>第${quizState.total+1}题 | 得分：${quizState.score} | 房间${roomCode}</p></div>
     <div class="card">
         <div class="quiz-q">${q.q}</div>
-        <div class="quiz-opts">${q.opts.map((o,i)=>`<div class="quiz-opt ${answered?'locked':''} ${answered&&qs[myRole]===i?'picked':''}" onclick="pickQuiz(${i})" id="qo${i}">${o}</div>`).join('')}</div>
-        <p style="color:#b8a8cc;font-size:11px;margin-top:6px">${answered?'✅ 已选，等待对方...':(otherJoined?'请选择你的答案':'等待对方加入...')}</p>
-        <button class="btn btn-sm btn-outline mt-8" onclick="skipQuizQ()">🔄 换一题</button>
+        <div class="quiz-opts">${q.opts.map((o,i)=>`<div class="quiz-opt ${answered?'locked':''}" onclick="pickQuiz(${i})" id="qo${i}">${o}</div>`).join('')}</div>
+        <p style="color:#b8a8cc;font-size:11px;margin-top:6px">${answered?'✅ 已选，等对方...':'请选择你的答案'}</p>
+        <button class="btn btn-sm btn-outline mt-8" onclick="skipQuiz()">🔄 换一题</button>
     </div>
-    <button class="btn btn-sm btn-outline btn-block mt-8" onclick="backToLobby()">← 返回房间</button>`);
+    <button class="btn btn-sm btn-outline btn-block mt-8" onclick="leaveRoom()">← 离开房间</button>`);
 }
 
-async function pickQuiz(idx){
-    if(quizMyAnswer!=null)return;
-    quizMyAnswer=idx;
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key]||!state[key].quiz)return;
-    const qs=state[key].quiz;
-    const myRole=amHost?'hAns':'gAns';
-    qs[myRole]=idx;
-    // 检查是否双方都答了
-    const otherRole=amHost?'gAns':'hAns';
-    if(qs[otherRole]!=null){qs.revealed=true;}
-    await writeState(state);
-    // UI刷新在下一次poll
+function pickQuiz(idx){
+    if(myQuizAnswer!=null)return;
+    myQuizAnswer=idx;
     document.querySelectorAll('.quiz-opt').forEach((b,i)=>{b.classList.add('locked');if(i===idx)b.classList.add('picked');});
+    pub('quiz_answer',{answer:idx});
 }
 
-function showQuizReveal(qs,q){
-    localUI='quizReveal';
-    const h=q.opts[qs.hAns];const g=q.opts[qs.gAns];
-    const matched=qs.hAns===qs.gAns;
-    setTimeout(async()=>{
-        const state=await readState();
-        const key='room_'+roomCode;
-        if(!state[key])return;
-        state[key].quiz={idx:qs.idx+1,hAns:null,gAns:null,revealed:false,score:matched?qs.score+1:qs.score,total:qs.total+1,active:true};
-        quizMyAnswer=null;
-        await writeState(state);
+function showQuizReveal(matched){
+    const q=QUIZ[quizState.idx%QUIZ.length];
+    const myAns=amHost?quizState.hAns:quizState.gAns;
+    const otherAns=amHost?quizState.gAns:quizState.hAns;
+    setTimeout(()=>{
+        quizState.idx++;quizState.hAns=null;quizState.gAns=null;quizState.revealed=false;
+        myQuizAnswer=null;
+        if(quizState.total>=10)showQuizEnd();else showQuizUI();
     },2000);
-    render(`<div class="header"><div class="icon">💕</div><h1>默契大考验</h1></div>
+    r(`<div class="header"><div class="icon">💕</div><h1>默契大考验</h1></div>
     <div class="card">
         <div class="quiz-q">${q.q}</div>
-        <div style="display:flex;justify-content:center;gap:16px;margin:10px 0">
-            <div style="text-align:center"><small>${amHost?'你':'对方'}</small><br><b>${amHost?h:g}</b></div>
-            <div style="color:#c8b8d8;align-self:center">VS</div>
-            <div style="text-align:center"><small>${amHost?'对方':'你'}</small><br><b>${amHost?g:h}</b></div></div>
-        <div style="font-weight:700;font-size:15px;color:${matched?'#22c55e':'#ef4444'}">${matched?'🎉 默契！想到一块了！':'💔 不一样哦~'}</div>
-        <p style="color:#b8a8cc;font-size:11px">下一题马上来...</p></div>`);
+        <div style="display:flex;justify-content:center;gap:16px;margin:10px 0"><div style="text-align:center"><small>你</small><br><b>${q.opts[myAns]}</b></div><div style="color:#c8b8d8;align-self:center">VS</div><div style="text-align:center"><small>对方</small><br><b>${q.opts[otherAns]}</b></div></div>
+        <div style="font-weight:700;font-size:15px;color:${matched?'#22c55e':'#ef4444'}">${matched?'🎉 默契！':'💔 不一样~'}</div></div>`);
 }
 
-function handleQuizPoll(qs){
-    if(!qs||!qs.active)return;
-    const myRole=amHost?'hAns':'gAns';
-    const answered=qs[myRole]!=null;
-    const bothDone=qs.hAns!=null&&qs.gAns!=null;
-    if(bothDone&&qs.revealed&&localUI!=='quizReveal'){
-        showQuizReveal(qs,QUIZ[qs.idx%QUIZ.length]);
-    }else if(localUI==='quizReveal'&&!qs.revealed){
-        showQuizUI(qs);
-    }
+function skipQuiz(){
+    pub('quiz_skip',{});
+    quizState.idx++;quizState.hAns=null;quizState.gAns=null;quizState.revealed=false;
+    quizState.total++;myQuizAnswer=null;
+    if(quizState.total>=10)showQuizEnd();else showQuizUI();
 }
 
-async function skipQuizQ(){
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key]||!state[key].quiz)return;
-    const qs=state[key].quiz;
-    qs.idx++;qs.hAns=null;qs.gAns=null;qs.revealed=false;qs.total++;
-    quizMyAnswer=null;
-    if(qs.total>=10){await writeState(state);showQuizEnd(qs);return;}
-    await writeState(state);
-    showQuizUI(qs);
-}
-
-function showQuizEnd(qs){
-    localUI='quizEnd';
-    const pct=qs.total>0?Math.round(qs.score/qs.total*100):0;
-    render(`<div class="header"><div class="icon">🎉</div><h1>测试结束！</h1></div>
-    <div class="card"><div style="font-size:44px;font-weight:900;color:#c44dff">${pct}%</div>
-        <p style="color:#9b8aad">答对 ${qs.score}/${qs.total} 题</p>
-        <button class="btn btn-primary mt-8" onclick="startGame('quiz')">再来一次</button>
-        <button class="btn btn-sm btn-outline btn-block mt-8" onclick="backToLobby()">返回房间</button></div>`);
+function showQuizEnd(){
+    const pct=quizState.total>0?Math.round(quizState.score/quizState.total*100):0;
+    r(`<div class="header"><div class="icon">🎉</div><h1>测试结束！</h1></div>
+    <div class="card"><div style="font-size:44px;font-weight:900;color:#c44dff">${pct}%</div><p style="color:#9b8aad">答对 ${quizState.score}/${quizState.total} 题</p>
+        <button class="btn btn-primary mt-8" onclick="startGame()">再来一次</button>
+        <button class="btn btn-sm btn-outline btn-block mt-8" onclick="leaveRoom()">返回房间</button></div>`);
 }
 
 // ==================== 真心话大冒险 ====================
-function startTDFromState(td){currentGame='truthdare';rpsMyPick=null;showRPSUI();}
-
 function showRPSUI(){
-    localUI='rps';
-    const locked=rpsMyPick!=null?'locked':'';
-    render(`<div class="header"><div class="icon">✊</div><h1>真心话大冒险</h1><p>猜拳定胜负 | 房间${roomCode}</p></div>
-    <div class="card"><p style="color:#9b8aad" class="mb-8">双方同时出手！</p>
-        <div class="rps-row">
-            <button class="rps-btn ${locked}" onclick="pickRPS('✊')">✊</button>
-            <button class="rps-btn ${locked}" onclick="pickRPS('✋')">✋</button>
-            <button class="rps-btn ${locked}" onclick="pickRPS('✌️')">✌️</button></div>
-        <p style="color:#b8a8cc;font-size:11px">${rpsMyPick!=null?'✅ 已出，等对方...':'请出手！'}</p></div>
-    <button class="btn btn-sm btn-outline btn-block mt-8" onclick="backToLobby()">← 返回房间</button>`);
+    const locked=myRPSPick!=null?'locked':'';
+    r(`<div class="header"><div class="icon">✊</div><h1>真心话大冒险</h1><p>猜拳定胜负 | 房间${roomCode}</p></div>
+    <div class="card"><p class="mb-8" style="color:#9b8aad">双方同时出手！</p>
+        <div class="rps-row"><button class="rps-btn ${locked}" onclick="pickRPS('✊')">✊</button><button class="rps-btn ${locked}" onclick="pickRPS('✋')">✋</button><button class="rps-btn ${locked}" onclick="pickRPS('✌️')">✌️</button></div>
+        <p style="color:#b8a8cc;font-size:11px">${myRPSPick!=null?'✅ 已出，等对方...':'请出手！'}</p></div>
+    <button class="btn btn-sm btn-outline btn-block mt-8" onclick="leaveRoom()">← 离开房间</button>`);
 }
 
-async function pickRPS(hand){
-    if(rpsMyPick!=null)return;
-    rpsMyPick=hand;
+function pickRPS(hand){
+    if(myRPSPick!=null)return;
+    myRPSPick=hand;
     document.querySelectorAll('.rps-btn').forEach(b=>{b.classList.add('locked');if(b.textContent===hand)b.classList.add('picked')});
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key]||!state[key].td)return;
-    const td=state[key].td;
-    const myRole=amHost?'hRps':'gRps';
-    td[myRole]=hand;
-    // 检查双方是否都出了
-    const otherRole=amHost?'gRps':'hRps';
-    if(td[otherRole]!=null){resolveRPS(td,state,key);}
-    await writeState(state);
+    pub('rps_pick',{pick:hand});
 }
 
-function resolveRPS(td,state,key){
-    const h=td.hRps,g=td.gRps;
+function resolveRPS(){
+    const h=tdState.hRps,g=tdState.gRps;
     let result,loser;
     if(h===g){result='🤝 平局！';loser=null;}
-    else if((h==='✊'&&g==='✌️')||(h==='✋'&&g==='✊')||(h==='✌️'&&g==='✋')){result='🎉 玩家1赢了！';loser='guest';}
-    else{result='🎉 玩家2赢了！';loser='host';}
-    td.result=result;td.loser=loser;
-    if(loser){td.phase='choose';}else{td.phase='rps';td.hRps=null;td.gRps=null;}
-    state[key].td=td;
-}
-
-function handleTDPoll(td){
-    if(!td||!td.active)return;
-    if(td.phase==='rps'&&td.hRps!=null&&td.gRps!=null&&localUI==='rps'){
-        showRPSReveal(td);
-    }
-    if(td.phase==='choose'&&localUI!=='tdChoose'){
-        showTDChoose(td);
-    }
-    if(td.phase==='show'&&td.index!=null&&localUI!=='tdShow'){
-        showTDShow(td);
-    }
-}
-
-function showRPSReveal(td){
-    localUI='rpsReveal';
-    const iAmLoser=(td.loser==='host'&&amHost)||(td.loser==='guest'&&!amHost);
-    render(`<div class="header"><div class="icon">✊</div><h1>真心话大冒险</h1></div>
+    else if((h==='✊'&&g==='✌️')||(h==='✋'&&g==='✊')||(h==='✌️'&&g==='✋')){result='玩家1赢了！';loser='guest';}
+    else{result='玩家2赢了！';loser='host';}
+    tdState.result=result;tdState.loser=loser;
+    if(loser){tdState.phase='choose';showTDChoose();}
+    else{setTimeout(()=>{tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};myRPSPick=null;showRPSUI();},1500);}
+    const myPick=amHost?h:g;
+    const otherPick=amHost?g:h;
+    r(`<div class="header"><div class="icon">✊</div><h1>真心话大冒险</h1></div>
     <div class="card">
-        <div style="display:flex;justify-content:center;align-items:center;gap:18px;margin:8px 0">
-            <div style="text-align:center"><div style="font-size:36px">${td.hRps}</div><small>玩家1</small></div>
-            <div>VS</div>
-            <div style="text-align:center"><div style="font-size:36px">${td.gRps}</div><small>玩家2</small></div></div>
-        <p style="font-weight:700;font-size:16px">${td.result}</p>
-        <p style="color:#b8a8cc;font-size:12px">${td.loser?`${iAmLoser?'你输了！':'对方输了~'}`:'重新猜拳...'}</p></div>`);
+        <div style="display:flex;justify-content:center;align-items:center;gap:18px;margin:8px 0"><div style="text-align:center"><div style="font-size:36px">${myPick}</div><small>你</small></div><div>VS</div><div style="text-align:center"><div style="font-size:36px">${otherPick}</div><small>对方</small></div></div>
+        <p style="font-weight:700;font-size:16px">${result}</p></div>`);
 }
 
-function showTDChoose(td){
-    localUI='tdChoose';
-    const iAmLoser=(td.loser==='host'&&amHost)||(td.loser==='guest'&&!amHost);
-    if(iAmLoser){render(`<div class="header"><div class="icon">🎲</div><h1>真心话大冒险</h1></div>
-        <div class="card"><p style="font-weight:700" class="mb-8">${td.result}</p><p style="color:#9b8aad" class="mb-8">你输了！选择挑战：</p>
+function showTDChoose(){
+    const iAmLoser=(tdState.loser==='host'&&amHost)||(tdState.loser==='guest'&&!amHost);
+    if(iAmLoser){r(`<div class="header"><div class="icon">🎲</div><h1>真心话大冒险</h1></div>
+        <div class="card"><p style="font-weight:700" class="mb-8">${tdState.result}</p><p style="color:#9b8aad" class="mb-8">你输了！选挑战：</p>
             <button class="btn btn-primary btn-block" onclick="chooseTD('truth')" style="background:linear-gradient(135deg,#ff4d6a,#ff6b9d)">🗣️ 真心话</button>
             <button class="btn btn-primary btn-block mt-8" onclick="chooseTD('dare')" style="background:linear-gradient(135deg,#4d6aff,#6b9dff)">⚡ 大冒险</button></div>`);}
-    else{render(`<div class="header"><div class="icon">🎲</div><h1>真心话大冒险</h1></div>
-        <div class="card"><p style="font-weight:700" class="mb-8">${td.result}</p><p style="color:#b8a8cc">⏳ 等对方选择挑战类型...</p></div>`);}
+    else{r(`<div class="header"><div class="icon">🎲</div><h1>真心话大冒险</h1></div>
+        <div class="card"><p style="font-weight:700" class="mb-8">${tdState.result}</p><p style="color:#b8a8cc">⏳ 等对方选挑战...</p></div>`);}
 }
 
-async function chooseTD(type){
+function chooseTD(type){
     const pool=type==='truth'?TRUTH:DARE;
     const idx=Math.floor(Math.random()*pool.length);
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key]||!state[key].td)return;
-    state[key].td.type=type;state[key].td.index=idx;state[key].td.phase='show';
-    await writeState(state);
+    tdState.type=type;tdState.index=idx;
+    pub('td_choose',{type,index:idx});
+    showTDShow();
 }
 
-function showTDShow(td){
-    localUI='tdShow';
-    const pool=td.type==='truth'?TRUTH:DARE;
-    const content=pool[td.index]||pool[0];
-    render(`<div class="header"><div class="icon">🎲</div><h1>真心话大冒险</h1></div>
-    <div class="card">
-        <div class="td-card"><div><span class="tag ${td.type==='truth'?'tag-truth':'tag-dare'}">${td.type==='truth'?'🗣️ 真心话':'⚡ 大冒险'}</span><div>${content}</div></div></div>
+function showTDShow(){
+    const pool=(tdState.type==='truth'?TRUTH:DARE);
+    const content=pool[tdState.index]||pool[0];
+    r(`<div class="header"><div class="icon">🎲</div><h1>真心话大冒险</h1></div>
+    <div class="card"><div class="td-card"><div><span class="tag ${tdState.type==='truth'?'tag-truth':'tag-dare'}">${tdState.type==='truth'?'🗣️ 真心话':'⚡ 大冒险'}</span><div>${content}</div></div></div>
         <p style="color:#b8a8cc;font-size:11px">完成挑战后继续~</p>
-        <button class="btn btn-primary mt-8" onclick="nextTDRound()">✅ 完成！继续</button>
+        <button class="btn btn-primary mt-8" onclick="nextTD()">✅ 完成！继续</button>
         <button class="btn btn-sm btn-outline btn-block mt-8" onclick="redrawTD()">🔄 换一个</button></div>
-    <button class="btn btn-sm btn-outline btn-block mt-8" onclick="backToLobby()">← 返回房间</button>`);
+    <button class="btn btn-sm btn-outline btn-block mt-8" onclick="leaveRoom()">← 离开房间</button>`);
 }
 
-async function nextTDRound(){
-    rpsMyPick=null;localUI=null;
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key])return;
-    state[key].td={hRps:null,gRps:null,result:null,loser:null,type:null,index:null,phase:'rps',active:true};
-    await writeState(state);
-    showRPSUI();
-}
+function nextTD(){pub('td_next',{});tdState={phase:'rps',hRps:null,gRps:null,result:null,loser:null,type:null,index:null};myRPSPick=null;showRPSUI();}
+function redrawTD(){pub('td_redraw',{});showTDChoose();}
 
-async function redrawTD(){
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(!state[key]||!state[key].td)return;
-    state[key].td.phase='choose';
-    await writeState(state);
-}
-
-async function backToLobby(){
-    currentGame=null;localUI=null;quizMyAnswer=null;rpsMyPick=null;
-    const state=await readState();
-    const key='room_'+roomCode;
-    if(state[key]){state[key].game=null;state[key].quiz.active=false;state[key].td.active=false;await writeState(state);}
-    showLobby();
-}
-
+// ==================== Toast ====================
 function showToast(msg,type){
     const old=document.querySelector('.toast');if(old)old.remove();
     const t=document.createElement('div');t.className='toast toast-'+type;t.textContent=msg;
@@ -512,7 +392,7 @@ function showToast(msg,type){
     setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .4s';setTimeout(()=>t.remove(),400);},2000);
 }
 
-// ==================== 浮动爱心 ====================
+// ==================== 爱心 ====================
 (function(){
     const c=document.getElementById('heartsBg');
     const h=['💕','💖','💗','💝','💘','❤️','💓'];
